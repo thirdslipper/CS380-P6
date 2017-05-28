@@ -1,104 +1,111 @@
+/**
+ * Author: Colin Koo
+ * Professor: Nima Davarpanah
+ * Program: This program emulates playing tic-tac-toe with a server.
+ */
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Scanner;
 
 public class TicTacToeClient {
-
+	static Scanner kb = new Scanner(System.in);
+	/**
+	 * Connects to the server and starts the main loop to play the game.
+	 * @param args
+	 * @throws UnknownHostException
+	 */
 	public static void main(String[] args) throws UnknownHostException {
 		try (Socket socket = new Socket("codebank.xyz", 38006)){
-
-			ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
-			ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
-
-			//			ConnectMessage connect = new ConnectMessage(getName());
-			/*			oos.writeObject(new ConnectMessage("Colin"));
-			oos.writeObject(new CommandMessage(CommandMessage.Command.NEW_GAME));*/
-
-			/*			Thread sl = new Thread(new serverListen(socket));//, ois));
-			sl.start();*/
-
-			/*			Object board = ois.readObject();
-			if (board instanceof BoardMessage){
-				displayBoard ((BoardMessage) board);
-			}*/
-
-			/*			BoardMessage board = (BoardMessage) ois.readObject();
-			displayBoard(board);
-			 */
-			play(ois, oos);
-
+			play(new ObjectInputStream(socket.getInputStream()), new ObjectOutputStream(socket.getOutputStream()));
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
-
+	/**
+	 * This method is the main method to control the flow of the game, ending the game on certain conditions
+	 * and allowing the user to provide input.
+	 * @param ois
+	 * @param oos
+	 */
 	public static void play(ObjectInputStream ois, ObjectOutputStream oos){
 		Message message = null;
 		BoardMessage casted = null;
 		boolean gameOver = false;
 		String move = "";
-
-		try {
-			oos.writeObject(new ConnectMessage("Colin"));
+		
+		try {	//New game
+			oos.writeObject(new ConnectMessage(getName()));
 			oos.writeObject(new CommandMessage(CommandMessage.Command.NEW_GAME));
+			System.out.println("You are O, Enemy is X, Blank spaces are E");
 		} catch (IOException e1) {
 			e1.printStackTrace();
 		}
 
-		while (!gameOver){//change to win condition
-
+		while (!gameOver){
 			try { 
-				message = (Message) ois.readObject(); 
+				message = (Message) ois.readObject();	//Only should receive BoardMessage or ErrorMessage
 			} 
 			catch (ClassNotFoundException | IOException e1) {
 				e1.printStackTrace();
 			}
-			if (message instanceof BoardMessage){
-				System.out.println("board");
+			if (message instanceof BoardMessage){	// Should print board and status of the game.
 				casted = (BoardMessage) message;
-				System.out.println(casted.getStatus());
+				System.out.println("Game Status: " + casted.getStatus());
 				displayBoard(casted);
 			}
-			else{
-				System.out.println("thinking");
-				System.out.println(((ErrorMessage) message).toString());
+			else{	
+				System.out.println(((ErrorMessage)message).toString());
 				gameOver = true;
 			}
+				//Establish game ending conditions
 			if (!casted.getStatus().toString().equals("PLAYER1_VICTORY") && !casted.getStatus().toString().equals("PLAYER2_VICTORY")
 					&& !casted.getStatus().toString().equals("STALEMATE")){
+				gameOver = false;
+			}
+			else{
+				gameOver = true;
+			}
+			if (!gameOver){
 				move = playerTurn();
 				try {
 					oos.writeObject(new MoveMessage((byte) Character.getNumericValue(move.charAt(0)), (byte) Character.getNumericValue(move.charAt(1))));
-					/*				message = ois.readObject();
-					if (message instanceof BoardMessage){
-						displayBoard((BoardMessage) message);
-					}*/
 				} catch (IOException e) {
-					System.out.println("thinking2");
 					e.printStackTrace();
 				}
 			}
 		}
+		kb.close();
+		System.out.println("Good Game.");
 	}
-	//error check later
+	/**
+	 * This method takes a valid player input and passes it within the play method to allow
+	 * the player to select a spot to mark.
+	 * @return
+	 */
 	public static String playerTurn(){
 		StringBuilder sb = new StringBuilder();
-		Scanner kb = new Scanner(System.in);
 		String move = "";
-		System.out.println("Enter your next move, (row: 0-2, col: 0-2)"
-				+ "\nex: \"0,0\" for top left, \"2,2\" for bottom right");
-		move = kb.nextLine();
+		boolean fail = false;
 		
+		while (!(move.length() == 3 && move.contains(",") && (Character.isDigit(move.charAt(0))) && Character.isDigit(move.charAt(2)))){
+			System.out.println("Enter your next move, (row: 0-2, col: 0-2)"
+					+ "\nex: \"0,0\" for top left, \"2,2\" for bottom right");
+			move = kb.nextLine();
+			if (!(move.length() == 3 && move.contains(",") && (Character.isDigit(move.charAt(0))) && Character.isDigit(move.charAt(2)))){
+				System.out.println("Re-enter move");
+			}
+		}
 		sb.append(move).deleteCharAt(sb.indexOf(",")).trimToSize();
-		System.out.println("marking: " + sb.toString());
 		return sb.toString();
 	}
-
+	/**
+	 * Displays the BoardMessage byte[][] into a 3x3 board representation including symbols representing 
+	 * the player(O), player2(X), and empty spaces(E).
+	 * @param boardMsg
+	 */
 	public static void displayBoard(BoardMessage boardMsg){
 		byte[][] board = boardMsg.getBoard();
 
@@ -121,42 +128,18 @@ public class TicTacToeClient {
 					System.out.print("|");
 				}
 			}
-			System.out.println();
+			System.out.println("");
 		}
+		System.out.println("");
 	}
-
+	/**
+	 * Gets a name from the user.
+	 * @return
+	 */
 	public static String getName(){
 		String name;
-		Scanner kb = new Scanner(System.in);
 		System.out.println("Enter your username: ");
 		name = kb.nextLine();
-		kb.close();
 		return name;
-	}
-
-	private static class serverListen implements Runnable {
-		Socket socket = null;
-		ObjectInputStream ois = null;
-		BoardMessage temp = null;
-
-		public serverListen(Socket socket, ObjectInputStream ois){
-			this.socket = socket;
-			//this.ois = ois;
-		}
-		public void run() {
-			try {
-				ois.readObject();
-
-				/*				if (ois.readObject() instanceof BoardMessage){
-					System.out.println("test");
-				}*/
-				/*				temp = (BoardMessage) ois.readObject();
-				if (temp instanceof BoardMessage){
-					System.out.println("test");
-				}*/
-			} catch (IOException | ClassNotFoundException e) {
-				e.printStackTrace();
-			}
-		}
 	}
 }
